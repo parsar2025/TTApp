@@ -14,6 +14,9 @@ import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
+import com.ttapp.integration.TrackerWidget
+import com.ttapp.integration.TrackerNotification
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -38,6 +41,11 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun TTApp(repo: TrackerRepository) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    suspend fun syncSystem() {
+        TrackerWidget.refresh(context)
+        TrackerNotification.sync(context)
+    }
     val tasks by repo.tasks.collectAsStateWithLifecycle(initialValue = emptyList())
     val tracking by repo.tracking.collectAsStateWithLifecycle(initialValue = null)
     var tab by remember { mutableIntStateOf(0) }
@@ -131,6 +139,7 @@ fun TTApp(repo: TrackerRepository) {
                             selectedId = id
                             if (tracking?.running == true && tracking?.taskId == id) repo.pause()
                             else repo.start(id)
+                            syncSystem()
                             shownTime = null
                         } finally { busy = false }
                     }
@@ -147,6 +156,7 @@ fun TTApp(repo: TrackerRepository) {
                 OutlinedButton(onClick = {
                     scope.launch {
                         repo.stop()
+                        syncSystem()
                         selectedId = null
                         title = ""; description = ""; shownTime = null
                     }
