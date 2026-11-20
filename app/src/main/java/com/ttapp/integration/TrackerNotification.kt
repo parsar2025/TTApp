@@ -66,7 +66,7 @@ object TrackerNotification {
             .addAction(0, "Stop",
                 TrackerWidget.pending(context, TrackerWidget.ACTION_STOP, 2))
             .build()
-        manager.notify(TRACKING_ID, notification)
+        post(manager, TRACKING_ID, notification)
     }
 
     fun showElapsed(context: Context, duration: String) {
@@ -81,6 +81,14 @@ object TrackerNotification {
             .setContentText(duration).setContentIntent(open)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setTimeoutAfter(3000).setSilent(true).build()
-        NotificationManagerCompat.from(context).notify(CHECK_ID, note)
+        post(NotificationManagerCompat.from(context), CHECK_ID, note)
+    }
+
+    private fun post(manager: NotificationManagerCompat, id: Int, notification: Notification) {
+        try {
+            manager.notify(id, notification)
+        } catch (_: SecurityException) {
+            // Notification permission can be revoked between the permission check and posting.
+        }
     }
 }

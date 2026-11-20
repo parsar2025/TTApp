@@ -6,7 +6,7 @@ TTApp records **when** work starts, pauses, resumes, and stops—not a stream of
 
 > **Start working → Forget the app → Check elapsed time on demand → Pause or stop → Keep the history.**
 
-**Project status:** Seven development phases exist as source code and Git commits. The application has **not yet completed a successful Android compile, automated test run, APK build, or Samsung Galaxy S23 validation**. This is an active development repository, not a verified release.
+**Project status:** See the [validation checklist](docs/TESTING_AND_LIMITATIONS.md) for build results and remaining Galaxy S23 checks.
 
 ## Why TTApp?
 
@@ -44,7 +44,7 @@ flowchart LR
 | Insights | Daily/weekly totals, per-task and per-project summaries |
 | Portability | Local CSV export; JSON backup and confirmed restore |
 | System integration | Home-screen widget and optional event-driven notifications with actions |
-| Tests | Source-level time calculation and midnight-boundary unit tests (not yet executed successfully) |
+| Tests | JVM timekeeping and calendar tests, plus Android repository and backup tests |
 
 The tracker is designed to **avoid ongoing CPU work** while a session is running. UI time snapshots and system surfaces update only when needed, not on a one-second timer.
 
@@ -100,12 +100,12 @@ Open Android Studio's **SDK Manager** and install the SDK components after revie
 
 ```powershell
 cd C:\Users\ASUS\Documents\Code\TTApp
-$env:JAVA_HOME = 'C:\Program Files\JetBrains\PyCharm 2025.3.3\jbr'
+$env:JAVA_HOME = 'C:\path	o\jdk-21'
 .\gradlew.bat :app:testDebugUnitTest
 .\gradlew.bat :app:assembleDebug
 ```
 
-Only **after a successful build** should `app/build/outputs/apk/debug/app-debug.apk` exist. The initial attempt failed to resolve Android Gradle Plugin dependencies, and the SDK package installation remains incomplete pending license acceptance. No installable APK has been verified.
+The debug-signed APK is written to `app/build/outputs/apk/debug/app-debug.apk`. Transfer it to the phone and open it to install. Android may ask you to allow installs from the app used to open the file.
 
 ## Samsung S23 and Always-On Display
 

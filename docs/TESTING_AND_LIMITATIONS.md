@@ -2,9 +2,7 @@
 
 ## Validation snapshot
 
-At documentation time, **the Git repository and source files exist**, Gradle 8.13 wrapper launched with a Java 21 runtime, and main Android XML resources passed basic XML parsing. **No successful Android compile, unit test execution, installed APK, or Samsung S23 field test has been reported.**
-
-The build attempt failed during Android Gradle Plugin resolution. Android command-line tools were downloaded, but platform/build-tools packages were not installed because Google SDK license acceptance was not granted. Do not represent this repository as a verified release.
+The debug APK built with Android SDK 36 and a full JDK 21. APK Signature Scheme v2 verification passed. The APK installed and the stopwatch screen opened on Samsung model SM-S918B running Android 17. All seven JVM tests passed, including local midnight and daylight-saving boundaries. Two Room instrumentation tests passed on the same phone. Android lint passed with warnings.
 
 ## Build steps (Windows)
 
@@ -12,35 +10,35 @@ Prerequisites: JDK 17+, Android SDK Platform 36, Android Build Tools 36.0.0 and 
 
 ```powershell
 cd C:\Users\ASUS\Documents\Code\TTApp
-$env:JAVA_HOME = 'C:\Program Files\JetBrains\PyCharm 2025.3.3\jbr'
+$env:JAVA_HOME = 'C:\path\to\jdk-21'
 .\gradlew.bat --version
 .\gradlew.bat :app:testDebugUnitTest
 .\gradlew.bat :app:assembleDebug
 ```
 
-If successful, inspect `app/build/outputs/apk/debug/app-debug.apk`. Its existence has **not** been confirmed. Review Gradle repository configuration if `com.android.application` or other artifacts fail to resolve.
+The signed debug APK is at `app/build/outputs/apk/debug/app-debug.apk`. Run `gradlew.bat :app:connectedDebugAndroidTest` with an authorized USB device to repeat the repository and backup tests.
 
 ## Functional acceptance matrix
 
 | Scenario | Expected behavior | Validation |
 | --- | --- | --- |
 | Start → close app → reopen | Recover task and correct elapsed time without background tick | Pending device test |
-| Start → Pause → Resume → Stop | Correct interval records; no paused time added | Pending |
+| Start → Pause → Resume → Stop | Correct interval records; no paused time added | Repository flow covered on device; UI sequence pending |
 | Return to stopped task | New session, lifetime total accumulates | Pending |
-| Start task B while A runs | A's active interval closes; only B accumulates | Pending |
+| Start task B while A runs | A's active interval closes; only B accumulates | Passed on-device repository test |
 | Process killed | Tracking anchor persisted | Pending |
 | Reboot | Recover with documented wall-clock fallback | Pending |
 | Clock/timezone edit | Monotonic duration within boot, consistent date grouping | Pending |
-| Crossing midnight | Duration assigned across relevant local days | JVM test source present; not executed |
+| Crossing midnight | Duration assigned across relevant local days | Passed JVM tests for midnight and DST |
 | Edit/delete intervals | Totals update from saved interval records | Pending |
 | Search titles/descriptions/tags | Relevant task rows returned | Pending |
-| JSON backup/restore | Consistent data, protected replacement, paused restored session | Pending |
+| JSON backup/restore | Consistent data, protected replacement, paused restored session | Passed paused-session round trip on device |
 | CSV export | Rows preserve task, session and interval data | Pending |
 | Widget / notification actions | Buttons apply repository operations, UI refreshes on events | Pending S23 test |
 | Notification permission denied | Core stopwatch still works | Pending |
 | Large history and battery | Acceptable responsiveness, no periodic CPU wakeups | Pending profile |
 
-Source unit tests currently include `TimeMathTest.kt` and `DaySplitTest.kt`; full repository, Room integration, widget and UI instrumentation tests remain to be written.
+JVM tests cover time arithmetic and local date boundaries. Room instrumentation tests cover switching between tasks and JSON backup and restore using an isolated database.
 
 ## Android and Samsung One UI restrictions
 
@@ -60,7 +58,7 @@ The monotonic elapsed-time clock is reliable for time intervals in a single boot
 - All core data is stored on device; app automatic cloud backup is disabled.
 - CSV and JSON files become accessible wherever the user saves them with Android's document picker; treat them as personal activity records.
 - Restore **replaces** the existing database's tasks and tracking data, so export a fresh backup first.
-- Restore is intended to be atomic, but a full round-trip verification and malformed-backup tests are required.
+- Restore replaces records in one Room transaction. A paused-session round trip passed on device. Active-session snapshots and malformed backups still need dedicated tests.
 - Room schema v1 has no published migration path yet; never enable destructive fallback as a shortcut for release.
 
 ## Release definition

@@ -20,6 +20,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalAccessibilityManager
 import com.ttapp.integration.TrackerWidget
 import com.ttapp.integration.TrackerNotification
 import androidx.compose.ui.Modifier
@@ -47,6 +48,7 @@ class MainActivity : ComponentActivity() {
 fun TTApp(repo: TrackerRepository) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val accessibility = LocalAccessibilityManager.current
     val notificationPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -144,7 +146,9 @@ fun TTApp(repo: TrackerRepository) {
                         val sequence = revealCount
                         scope.launch {
                             shownTime = TimeMath.format(repo.checkTime().sessionMs)
-                            delay(3000)
+                            delay(accessibility?.calculateRecommendedTimeoutMillis(
+                                originalTimeoutMillis = 3000, containsText = true
+                            ) ?: 3000L)
                             if (revealCount == sequence) shownTime = null
                         }
                     }, enabled = tracking?.taskId != null && current,

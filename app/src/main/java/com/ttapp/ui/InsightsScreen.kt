@@ -21,6 +21,9 @@ import com.ttapp.domain.ClockSample
 import com.ttapp.domain.TimeAnchor
 import com.ttapp.data.AndroidTimeSource
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** Split time at midnight in local time, rather than assigning all time to start date. */
 fun perDay(intervals: List<TimeIntervalEntity>, zone: ZoneId): Map<LocalDate, Long> {
@@ -59,7 +62,7 @@ suspend fun exportCsv(context: Context, repo: TrackerRepository, uri: android.ne
                 row.startedAt.toString(), row.endedAt.toString(),
                 row.durationMs.toString(), csvValue(note)).joinToString(",") + "\n")
         }
-    }
+    } ?: error("Could not open CSV destination")
 }
 
 @Composable
@@ -88,7 +91,6 @@ fun InsightsScreen(repo: TrackerRepository, onBack: () -> Unit) {
     }
     val effectiveIntervals = if (liveInterval != null) intervals + liveInterval else intervals
     val daily = remember(effectiveIntervals, zone) { perDay(effectiveIntervals, zone) }
-    val weekField = WeekFields.of(Locale.getDefault()).weekOfWeekBasedYear()
     val weekStart = today.minusDays((today.dayOfWeek.value - 1).toLong())
     val weekly = daily.filterKeys { !it.isBefore(weekStart) && !it.isAfter(today) }.values.sum()
     val taskTotals = effectiveIntervals.groupBy { it.taskId }
@@ -106,9 +108,15 @@ fun InsightsScreen(repo: TrackerRepository, onBack: () -> Unit) {
         ActivityResultContracts.CreateDocument("text/csv")
     ) { uri ->
         if (uri != null) {
-            // This callback runs on main; use lifecycle scope for IO instead in production.
-            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
-                exportCsv(context, repo, uri)
+            scope.launch {
+                try {
+                    withContext(Dispatchers.IO) { exportCsv(context, repo, uri) }
+                    feedback = "CSV saved"
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    feedback = "CSV export failed: " + e.message
+                }
             }
         }
     }

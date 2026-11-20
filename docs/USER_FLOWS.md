@@ -69,7 +69,7 @@ A task's existence is independent of whether it has an active session.
 3. Add or edit a session note; optionally correct interval start/end time or remove an interval/session.
 4. Recomputed task and session totals should follow from interval data.
 
-**Current source UI:** Interval correction uses epoch milliseconds in advanced fields, not a friendly date/time picker. A proper timestamp editor is a planned usability improvement. Destructive actions should be reviewed for adequate confirmation.
+Choose local dates and times for the start and end of an interval. Save is available when the end is at or after the start.
 
 ## Flow 5 — Optional organization after the fact
 

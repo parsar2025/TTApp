@@ -17,50 +17,53 @@ import kotlinx.coroutines.withContext
 object BackupIO {
     suspend fun write(context: Context, repo: TrackerRepository, uri: Uri) =
         withContext(Dispatchers.IO) {
-            val dao = repo.dao
-            val root = JSONObject().put("format", "TTApp").put("version", 1)
-            val projects = dao.allProjects()
-            val labels = dao.allLabels()
-            val tasks = dao.allTasks()
-            val sessions = dao.allSessions()
-            val taskLabels = dao.allTaskLabels()
-            val intervals = dao.allIntervals().toMutableList()
-            val tracking = dao.tracking()
-            if (tracking?.running == true && tracking.taskId != null && tracking.sessionId != null) {
-                val boot = try {
-                    Settings.Global.getInt(context.contentResolver, Settings.Global.BOOT_COUNT)
-                } catch (_: Exception) { -1 }
-                val duration = TimeMath.elapsedMs(
-                    TimeAnchor(tracking.startWallMs, tracking.startElapsedMs, tracking.startBootId),
-                    ClockSample(System.currentTimeMillis(), SystemClock.elapsedRealtime(), boot)
-                )
-                if (duration > 0) intervals.add(TimeIntervalEntity(
-                    taskId = tracking.taskId, sessionId = tracking.sessionId,
-                    startedAt = tracking.startWallMs, endedAt = tracking.startWallMs + duration,
-                    durationMs = duration
-                ))
+            val root = repo.db.withTransaction {
+                val dao = repo.dao
+                val snapshot = JSONObject().put("format", "TTApp").put("version", 1)
+                val projects = dao.allProjects()
+                val labels = dao.allLabels()
+                val tasks = dao.allTasks()
+                val sessions = dao.allSessions()
+                val taskLabels = dao.allTaskLabels()
+                val intervals = dao.allIntervals().toMutableList()
+                val tracking = dao.tracking()
+                if (tracking?.running == true && tracking.taskId != null && tracking.sessionId != null) {
+                    val boot = try {
+                        Settings.Global.getInt(context.contentResolver, Settings.Global.BOOT_COUNT)
+                    } catch (_: Exception) { -1 }
+                    val duration = TimeMath.elapsedMs(
+                        TimeAnchor(tracking.startWallMs, tracking.startElapsedMs, tracking.startBootId),
+                        ClockSample(System.currentTimeMillis(), SystemClock.elapsedRealtime(), boot)
+                    )
+                    if (duration > 0) intervals.add(TimeIntervalEntity(
+                        taskId = tracking.taskId, sessionId = tracking.sessionId,
+                        startedAt = tracking.startWallMs, endedAt = tracking.startWallMs + duration,
+                        durationMs = duration
+                    ))
+                }
+                fun array(values: List<JSONObject>): JSONArray =
+                    JSONArray().apply { values.forEach { put(it) } }
+                snapshot.put("projects", array(projects.map { JSONObject()
+                    .put("id", it.id).put("name", it.name).put("color", it.color) }))
+                snapshot.put("labels", array(labels.map { JSONObject()
+                    .put("id", it.id).put("name", it.name).put("color", it.color) }))
+                snapshot.put("tasks", array(tasks.map { JSONObject()
+                    .put("id", it.id).put("title", it.title).put("description", it.description)
+                    .put("projectId", it.projectId).put("createdAt", it.createdAt)
+                    .put("updatedAt", it.updatedAt) }))
+                snapshot.put("taskLabels", array(taskLabels.map { JSONObject()
+                    .put("taskId", it.taskId).put("labelId", it.labelId) }))
+                snapshot.put("sessions", array(sessions.map { JSONObject()
+                    .put("id", it.id).put("taskId", it.taskId).put("startedAt", it.startedAt)
+                    .put("endedAt", it.endedAt).put("notes", it.notes) }))
+                snapshot.put("intervals", array(intervals.map { JSONObject()
+                    .put("id", it.id).put("taskId", it.taskId).put("sessionId", it.sessionId)
+                    .put("startedAt", it.startedAt).put("endedAt", it.endedAt)
+                    .put("durationMs", it.durationMs).put("notes", it.notes) }))
+                snapshot.put("pausedTaskId", tracking?.taskId)
+                snapshot.put("pausedSessionId", tracking?.sessionId)
+                snapshot
             }
-            fun array(values: List<JSONObject>): JSONArray =
-                JSONArray().apply { values.forEach { put(it) } }
-            root.put("projects", array(projects.map { JSONObject()
-                .put("id", it.id).put("name", it.name).put("color", it.color) }))
-            root.put("labels", array(labels.map { JSONObject()
-                .put("id", it.id).put("name", it.name).put("color", it.color) }))
-            root.put("tasks", array(tasks.map { JSONObject()
-                .put("id", it.id).put("title", it.title).put("description", it.description)
-                .put("projectId", it.projectId).put("createdAt", it.createdAt)
-                .put("updatedAt", it.updatedAt) }))
-            root.put("taskLabels", array(taskLabels.map { JSONObject()
-                .put("taskId", it.taskId).put("labelId", it.labelId) }))
-            root.put("sessions", array(sessions.map { JSONObject()
-                .put("id", it.id).put("taskId", it.taskId).put("startedAt", it.startedAt)
-                .put("endedAt", it.endedAt).put("notes", it.notes) }))
-            root.put("intervals", array(intervals.map { JSONObject()
-                .put("id", it.id).put("taskId", it.taskId).put("sessionId", it.sessionId)
-                .put("startedAt", it.startedAt).put("endedAt", it.endedAt)
-                .put("durationMs", it.durationMs).put("notes", it.notes) }))
-            root.put("pausedTaskId", tracking?.taskId)
-            root.put("pausedSessionId", tracking?.sessionId)
             context.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use {
                 it.write(root.toString(2))
             } ?: error("Could not open backup destination")
@@ -105,13 +108,13 @@ object BackupIO {
                     it.getString("notes"))
             }
             val taskIds = tasks.map { it.id }.toSet()
-            val sessionIds = sessions.map { it.id }.toSet()
+            val sessionsById = sessions.associateBy { it.id }
             require(sessions.all { it.taskId in taskIds })
-            require(intervals.all { it.taskId in taskIds && it.sessionId in sessionIds &&
+            require(intervals.all { sessionsById[it.sessionId]?.taskId == it.taskId &&
                 it.durationMs >= 0 && it.endedAt >= it.startedAt })
             val pausedTask = nullableLong(root, "pausedTaskId")?.takeIf { it in taskIds }
             val pausedSession = nullableLong(root, "pausedSessionId")
-                ?.takeIf { it in sessionIds && sessions.any { s -> s.id == it && s.taskId == pausedTask && s.endedAt == null } }
+                ?.takeIf { sessionsById[it]?.let { s -> s.taskId == pausedTask && s.endedAt == null } == true }
             repo.db.withTransaction {
                 val dao = repo.dao
                 dao.setTracking(TrackingEntity())

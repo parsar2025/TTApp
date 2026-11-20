@@ -1,5 +1,8 @@
 package com.ttapp
 
+import android.app.DatePickerDialog
+import android.app.TimePickerDialog
+import android.text.format.DateFormat.is24HourFormat
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -8,6 +11,7 @@ import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.ttapp.data.*
 import com.ttapp.domain.TimeMath
@@ -15,6 +19,7 @@ import com.ttapp.ui.Cyan
 import com.ttapp.ui.OrganizationPanel
 import kotlinx.coroutines.launch
 import java.text.DateFormat
+import java.util.Calendar
 import java.util.Date
 
 @Composable
@@ -69,22 +74,22 @@ fun HistoryScreen(repo: TrackerRepository, taskId: Long, onBack: () -> Unit) {
 private fun IntervalRow(repo: TrackerRepository, interval: TimeIntervalEntity) {
     val scope = rememberCoroutineScope()
     var editing by remember { mutableStateOf(false) }
-    var start by remember(interval.id) { mutableStateOf(interval.startedAt.toString()) }
-    var end by remember(interval.id) { mutableStateOf(interval.endedAt.toString()) }
+    var start by remember(interval.startedAt) { mutableLongStateOf(interval.startedAt) }
+    var end by remember(interval.endedAt) { mutableLongStateOf(interval.endedAt) }
     var notes by remember(interval.id) { mutableStateOf(interval.notes) }
     Column(Modifier.padding(vertical = 8.dp)) {
         Text(TimeMath.format(interval.durationMs) + " | " +
             DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(interval.startedAt)))
         if (editing) {
-            Text("Edit Unix timestamps in milliseconds (advanced)")
-            OutlinedTextField(start, { start = it }, label = { Text("Start (ms)") })
-            OutlinedTextField(end, { end = it }, label = { Text("End (ms)") })
+            TimestampPicker("Start", start) { start = it }
+            TimestampPicker("End", end) { end = it }
+            if (end < start) {
+                Text("End must be at or after start", color = MaterialTheme.colorScheme.error)
+            }
             OutlinedTextField(notes, { notes = it }, label = { Text("Notes") })
-            TextButton(onClick = {
-                val a = start.toLongOrNull()
-                val b = end.toLongOrNull()
-                if (a != null && b != null && b >= a) scope.launch {
-                    repo.editInterval(interval.id, a, b, notes)
+            TextButton(enabled = end >= start, onClick = {
+                scope.launch {
+                    repo.editInterval(interval.id, start, end, notes)
                     editing = false
                 }
             }) { Text("Save correction") }
@@ -93,5 +98,24 @@ private fun IntervalRow(repo: TrackerRepository, interval: TimeIntervalEntity) {
             }) { Text("Delete interval", color = MaterialTheme.colorScheme.error) }
         } else TextButton(onClick = { editing = true }) { Text("Correct interval") }
         HorizontalDivider()
+    }
+}
+
+@Composable
+private fun TimestampPicker(label: String, value: Long, onChange: (Long) -> Unit) {
+    val context = LocalContext.current
+    OutlinedButton(onClick = {
+        val calendar = Calendar.getInstance().apply { timeInMillis = value }
+        DatePickerDialog(context, { _, year, month, day ->
+            TimePickerDialog(context, { _, hour, minute ->
+                calendar.set(year, month, day, hour, minute)
+                onChange(calendar.timeInMillis)
+            }, calendar.get(Calendar.HOUR_OF_DAY), calendar.get(Calendar.MINUTE),
+                is24HourFormat(context)).show()
+        }, calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH),
+            calendar.get(Calendar.DAY_OF_MONTH)).show()
+    }) {
+        Text("$label · " + DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
+            .format(Date(value)))
     }
 }

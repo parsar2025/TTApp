@@ -6,6 +6,7 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.os.Bundle
 import android.view.View
 import android.widget.RemoteViews
 import com.ttapp.MainActivity
@@ -19,6 +20,12 @@ import java.text.DateFormat
 import java.util.Date
 
 class TrackerWidget : AppWidgetProvider() {
+    override fun onAppWidgetOptionsChanged(
+        context: Context, manager: AppWidgetManager, appWidgetId: Int, newOptions: Bundle
+    ) {
+        onUpdate(context, manager, intArrayOf(appWidgetId))
+    }
+
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
         val pending = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
@@ -73,6 +80,14 @@ class TrackerWidget : AppWidgetProvider() {
             val ids = manager.getAppWidgetIds(component)
             for (id in ids) {
                 val view = RemoteViews(context.packageName, R.layout.widget_tracker)
+                val options = manager.getAppWidgetOptions(id)
+                val compact = options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 110) < 110 ||
+                    options.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 250) < 200
+                if (compact) {
+                    val inset = (4 * context.resources.displayMetrics.density).toInt()
+                    view.setViewPadding(R.id.widget_root, inset, 0, inset, 0)
+                }
+                view.setViewVisibility(R.id.widget_start, if (compact) View.GONE else View.VISIBLE)
                 view.setTextViewText(R.id.widget_title, title)
                 view.setTextViewText(R.id.widget_start, started)
                 view.setTextViewText(R.id.widget_toggle,
