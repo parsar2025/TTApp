@@ -47,8 +47,13 @@ fun TTApp(repo: TrackerRepository) {
         TrackerNotification.sync(context)
     }
     val tasks by repo.tasks.collectAsStateWithLifecycle(initialValue = emptyList())
+    val labels by repo.dao.labels().collectAsStateWithLifecycle(initialValue = emptyList())
+    val projects by repo.dao.projects().collectAsStateWithLifecycle(initialValue = emptyList())
+    val assignments by repo.dao.taskLabels().collectAsStateWithLifecycle(initialValue = emptyList())
     val tracking by repo.tracking.collectAsStateWithLifecycle(initialValue = null)
     var tab by remember { mutableIntStateOf(0) }
+    var newMode by remember { mutableStateOf(false) }
+    var insights by remember { mutableStateOf(false) }
     var selectedId by remember { mutableStateOf<Long?>(null) }
     var title by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
@@ -57,7 +62,7 @@ fun TTApp(repo: TrackerRepository) {
     var historyId by remember { mutableStateOf<Long?>(null) }
     var query by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
-    val taskId = selectedId ?: tracking?.taskId
+    val taskId = if (newMode) null else selectedId ?: tracking?.taskId
     val selected = tasks.firstOrNull { it.task.id == taskId }?.task
     val current = tracking?.taskId == taskId && taskId != null
 
@@ -77,7 +82,9 @@ fun TTApp(repo: TrackerRepository) {
         }
     }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding).padding(20.dp)) {
-            if (historyId != null) {
+            if (insights) {
+                InsightsScreen(repo, onBack = { insights = false })
+            } else if (historyId != null) {
                 HistoryScreen(repo, historyId!!, onBack = { historyId = null })
             } else if (tab == 0) {
                 Text("STOPWATCH", style = MaterialTheme.typography.labelLarge, color = Cyan)
@@ -137,6 +144,7 @@ fun TTApp(repo: TrackerRepository) {
                                 taskId
                             } else repo.create(title, description)
                             selectedId = id
+                            newMode = false
                             if (tracking?.running == true && tracking?.taskId == id) repo.pause()
                             else repo.start(id)
                             syncSystem()
@@ -158,6 +166,7 @@ fun TTApp(repo: TrackerRepository) {
                         repo.stop()
                         syncSystem()
                         selectedId = null
+                        newMode = false
                         title = ""; description = ""; shownTime = null
                     }
                 }, enabled = current, modifier = Modifier.fillMaxWidth().height(54.dp),
@@ -167,7 +176,7 @@ fun TTApp(repo: TrackerRepository) {
                     Text("Stop session")
                 }
                 TextButton(onClick = {
-                    selectedId = null; title = ""; description = ""; shownTime = null
+                    selectedId = null; newMode = true; title = ""; description = ""; shownTime = null
                 }, modifier = Modifier.align(Alignment.CenterHorizontally)) {
                     Text("New task", color = Muted)
                 }
@@ -175,8 +184,11 @@ fun TTApp(repo: TrackerRepository) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("Your activities", style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                    IconButton(onClick = { insights = true }) {
+                        Icon(Icons.Rounded.BarChart, "Insights", tint = Cyan)
+                    }
                     IconButton(onClick = {
-                        selectedId = null; title = ""; description = ""; tab = 0
+                        selectedId = null; newMode = true; title = ""; description = ""; tab = 0
                     }) { Icon(Icons.Rounded.Add, "New task", tint = Cyan) }
                 }
                 Spacer(Modifier.height(16.dp))
@@ -186,14 +198,18 @@ fun TTApp(repo: TrackerRepository) {
                     label = { Text("Search title and description") })
                 Spacer(Modifier.height(16.dp))
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    items(tasks.filter {
-                        it.task.title.contains(query, ignoreCase = true) ||
-                        it.task.description.contains(query, ignoreCase = true)
+                    items(tasks.filter { item ->
+                        val tagIds = assignments.filter { it.taskId == item.task.id }.map { it.labelId }.toSet()
+                        item.task.title.contains(query, ignoreCase = true) ||
+                        item.task.description.contains(query, ignoreCase = true) ||
+                        projects.any { it.id == item.task.projectId && it.name.contains(query, ignoreCase = true) } ||
+                        labels.any { it.id in tagIds && it.name.contains(query, ignoreCase = true) }
                     }, key = { it.task.id }) { item ->
                         Surface(shape = RoundedCornerShape(18.dp), color = Graphite,
                             border = BorderStroke(1.dp, Cyan.copy(alpha = .1f)),
                             modifier = Modifier.fillMaxWidth().clickable {
                                 selectedId = item.task.id
+                                newMode = false
                                 tab = 0
                             }) {
                             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {

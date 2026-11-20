@@ -12,6 +12,7 @@ import androidx.compose.ui.unit.dp
 import com.ttapp.data.*
 import com.ttapp.domain.TimeMath
 import com.ttapp.ui.Cyan
+import com.ttapp.ui.OrganizationPanel
 import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
@@ -29,6 +30,7 @@ fun HistoryScreen(repo: TrackerRepository, taskId: Long, onBack: () -> Unit) {
                 modifier = Modifier.padding(8.dp))
         }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            item { OrganizationPanel(repo, taskId) }
             items(sessions, key = { it.id }) { session ->
                 val isExpanded = selectedSession == session.id
                 val intervals by repo.dao.intervals(session.id).collectAsState(initial = emptyList())

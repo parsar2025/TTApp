@@ -110,6 +110,7 @@ interface TrackerDao {
     @Query("SELECT * FROM intervals WHERE sessionId = :sessionId ORDER BY startedAt DESC")
     fun intervals(sessionId: Long): Flow<List<TimeIntervalEntity>>
     @Query("SELECT * FROM intervals ORDER BY startedAt ASC") suspend fun allIntervals(): List<TimeIntervalEntity>
+    @Query("SELECT * FROM intervals ORDER BY startedAt ASC") fun intervalsFlow(): Flow<List<TimeIntervalEntity>>
     @Query("DELETE FROM intervals WHERE id = :id") suspend fun deleteInterval(id: Long)
     @Query("SELECT COALESCE(SUM(durationMs), 0) FROM intervals WHERE taskId = :taskId")
     suspend fun taskMs(taskId: Long): Long
@@ -132,6 +133,13 @@ interface TrackerDao {
     @Query("DELETE FROM task_labels WHERE taskId = :taskId AND labelId = :labelId")
     suspend fun removeLabel(taskId: Long, labelId: Long)
     @Query("SELECT * FROM projects WHERE id = :id") suspend fun project(id: Long): ProjectEntity?
+
+    @Query("DELETE FROM task_labels") suspend fun clearTaskLabels()
+    @Query("DELETE FROM intervals") suspend fun clearIntervals()
+    @Query("DELETE FROM sessions") suspend fun clearSessions()
+    @Query("DELETE FROM tasks") suspend fun clearTasks()
+    @Query("DELETE FROM labels") suspend fun clearLabels()
+    @Query("DELETE FROM projects") suspend fun clearProjects()
 }
 
 @Database(entities = [
