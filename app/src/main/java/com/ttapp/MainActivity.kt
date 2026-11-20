@@ -1,6 +1,11 @@
 package com.ttapp
 
 import android.os.Bundle
+import android.os.Build
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.BorderStroke
@@ -42,6 +47,11 @@ class MainActivity : ComponentActivity() {
 fun TTApp(repo: TrackerRepository) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val notificationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) scope.launch { TrackerNotification.sync(context) }
+    }
     suspend fun syncSystem() {
         TrackerWidget.refresh(context)
         TrackerNotification.sync(context)
@@ -62,9 +72,20 @@ fun TTApp(repo: TrackerRepository) {
     var historyId by remember { mutableStateOf<Long?>(null) }
     var query by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
+    var sessionStartMs by remember { mutableStateOf<Long?>(null) }
+    var homeSnapshot by remember { mutableStateOf<Pair<Long, Long>?>(null) }
     val taskId = if (newMode) null else selectedId ?: tracking?.taskId
     val selected = tasks.firstOrNull { it.task.id == taskId }?.task
     val current = tracking?.taskId == taskId && taskId != null
+    LaunchedEffect(tracking?.sessionId) {
+        sessionStartMs = tracking?.sessionId?.let { repo.dao.session(it)?.startedAt }
+    }
+    LaunchedEffect(tab, tracking?.taskId, tracking?.running) {
+        homeSnapshot = if (tab == 1 && tracking?.running == true && tracking?.taskId != null) {
+            val id = tracking!!.taskId!!
+            id to (repo.checkTime().taskMs - repo.dao.taskMs(id)).coerceAtLeast(0)
+        } else null
+    }
 
     LaunchedEffect(selected?.id) {
         if (selected != null) {
@@ -103,7 +124,7 @@ fun TTApp(repo: TrackerRepository) {
                 if (current && tracking?.running == true) {
                     Spacer(Modifier.height(12.dp))
                     Text("Started " + DateFormat.getTimeInstance(DateFormat.SHORT)
-                        .format(Date(tracking!!.startWallMs)),
+                        .format(Date(sessionStartMs ?: tracking!!.startWallMs)),
                         style = MaterialTheme.typography.bodySmall, color = Muted)
                 }
                 Spacer(Modifier.weight(1f))
@@ -148,6 +169,10 @@ fun TTApp(repo: TrackerRepository) {
                             if (tracking?.running == true && tracking?.taskId == id) repo.pause()
                             else repo.start(id)
                             syncSystem()
+                            if (Build.VERSION.SDK_INT >= 33 &&
+                                context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                                notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            }
                             shownTime = null
                         } finally { busy = false }
                     }
@@ -222,7 +247,9 @@ fun TTApp(repo: TrackerRepository) {
                                 }
                                 Spacer(Modifier.width(12.dp))
                                 Column(horizontalAlignment = Alignment.End) {
-                                    Text(TimeMath.format(item.totalMs), color = Cyan)
+                                    Text(TimeMath.format(item.totalMs +
+                                        if (homeSnapshot?.first == item.task.id) homeSnapshot!!.second else 0),
+                                        color = Cyan)
                                     IconButton(onClick = { historyId = item.task.id },
                                         modifier = Modifier.size(40.dp)) {
                                         Icon(Icons.Rounded.History, "Session history", tint = Muted)

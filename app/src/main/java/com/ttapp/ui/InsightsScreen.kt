@@ -17,8 +17,9 @@ import com.ttapp.integration.TrackerNotification
 import com.ttapp.integration.TrackerWidget
 import com.ttapp.domain.TimeMath
 import java.time.*
-import java.time.temporal.WeekFields
-import java.util.Locale
+import com.ttapp.domain.ClockSample
+import com.ttapp.domain.TimeAnchor
+import com.ttapp.data.AndroidTimeSource
 import kotlinx.coroutines.launch
 
 /** Split time at midnight in local time, rather than assigning all time to start date. */
@@ -38,7 +39,11 @@ fun perDay(intervals: List<TimeIntervalEntity>, zone: ZoneId): Map<LocalDate, Lo
     return days
 }
 
-fun csvValue(value: String) = "\"" + value.replace("\"", "\"\"") + "\""
+fun csvValue(value: String): String {
+    val safe = if (value.startsWith('=') || value.startsWith('+') ||
+        value.startsWith('-') || value.startsWith('@')) "'" + value else value
+    return "\"" + safe.replace("\"", "\"\"") + "\""
+}
 
 suspend fun exportCsv(context: Context, repo: TrackerRepository, uri: android.net.Uri) {
     val tasks = repo.dao.allTasks().associateBy { it.id }
@@ -64,15 +69,29 @@ fun InsightsScreen(repo: TrackerRepository, onBack: () -> Unit) {
     var pendingRestore by remember { mutableStateOf<Uri?>(null) }
     var feedback by remember { mutableStateOf("") }
     val intervals by repo.dao.intervalsFlow().collectAsState(initial = emptyList())
+    val tracking by repo.tracking.collectAsState(initial = null)
     val tasks by repo.dao.tasks().collectAsState(initial = emptyList())
     val projects by repo.dao.projects().collectAsState(initial = emptyList())
     val zone = remember { ZoneId.systemDefault() }
     val today = LocalDate.now(zone)
-    val daily = remember(intervals, zone) { perDay(intervals, zone) }
+    // Take one snapshot on screen entry, without a repeating timer.
+    val liveInterval = remember(tracking) {
+        val state = tracking
+        if (state?.running == true && state.taskId != null && state.sessionId != null) {
+            val duration = TimeMath.elapsedMs(
+                TimeAnchor(state.startWallMs, state.startElapsedMs, state.startBootId),
+                AndroidTimeSource(context).now())
+            TimeIntervalEntity(taskId = state.taskId, sessionId = state.sessionId,
+                startedAt = state.startWallMs, endedAt = state.startWallMs + duration,
+                durationMs = duration)
+        } else null
+    }
+    val effectiveIntervals = if (liveInterval != null) intervals + liveInterval else intervals
+    val daily = remember(effectiveIntervals, zone) { perDay(effectiveIntervals, zone) }
     val weekField = WeekFields.of(Locale.getDefault()).weekOfWeekBasedYear()
     val weekStart = today.minusDays((today.dayOfWeek.value - 1).toLong())
     val weekly = daily.filterKeys { !it.isBefore(weekStart) && !it.isAfter(today) }.values.sum()
-    val taskTotals = intervals.groupBy { it.taskId }
+    val taskTotals = effectiveIntervals.groupBy { it.taskId }
         .mapValues { (_, records) -> records.sumOf { it.durationMs } }
     val backup = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
@@ -150,6 +169,17 @@ fun InsightsScreen(repo: TrackerRepository, onBack: () -> Unit) {
                 Row(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
                     Text(task.title, modifier = Modifier.weight(1f), maxLines = 1)
                     Text(TimeMath.format(taskTotals[task.id] ?: 0), color = Cyan)
+                }
+            }
+            item {
+                Spacer(Modifier.height(15.dp))
+                Text("Projects", style = MaterialTheme.typography.titleMedium)
+            }
+            items(projects, key = { it.id }) { project ->
+                val ids = tasks.filter { it.projectId == project.id }.map { it.id }.toSet()
+                Row(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                    Text(project.name, modifier = Modifier.weight(1f))
+                    Text(TimeMath.format(ids.sumOf { taskTotals[it] ?: 0 }), color = Cyan)
                 }
             }
             item {

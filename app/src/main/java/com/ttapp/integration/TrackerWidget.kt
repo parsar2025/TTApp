@@ -63,9 +63,10 @@ class TrackerWidget : AppWidgetProvider() {
             val repo = (context.applicationContext as TTApplication).repository
             val state = repo.dao.tracking()
             val title = state?.taskId?.let { repo.dao.task(it)?.title } ?: "No active task"
+            val sessionStart = state?.sessionId?.let { repo.dao.session(it)?.startedAt }
             val started = if (state?.running == true)
                 "Started " + DateFormat.getTimeInstance(DateFormat.SHORT)
-                    .format(Date(state.startWallMs))
+                    .format(Date(sessionStart ?: state.startWallMs))
             else if (state?.taskId != null) "Paused" else "Ready"
             val manager = AppWidgetManager.getInstance(context)
             val component = ComponentName(context, TrackerWidget::class.java)

@@ -46,8 +46,9 @@ object TrackerNotification {
             return@withContext
         }
         val title = repo.dao.task(state.taskId)?.title ?: "Time tracking"
+        val sessionStart = state.sessionId?.let { repo.dao.session(it)?.startedAt }
         val detail = if (state.running) "Started " +
-            DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(state.startWallMs))
+            DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(sessionStart ?: state.startWallMs))
         else "Paused"
         val open = PendingIntent.getActivity(context, 0,
             Intent(context, MainActivity::class.java),
